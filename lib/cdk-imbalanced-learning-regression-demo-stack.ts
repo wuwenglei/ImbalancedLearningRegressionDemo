@@ -1,6 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
@@ -27,6 +30,7 @@ export class CdkImbalancedLearningRegressionDemoStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // back-end
     const rawDataBucket = new s3.Bucket(this, 'RawDataBucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -56,36 +60,6 @@ export class CdkImbalancedLearningRegressionDemoStack extends cdk.Stack {
     });
 
     const taskStatusSNSTopic = new sns.Topic(this, 'taskStatusSNSTopic');
-
-    // const boto3LambdaLayer = new lambda.LayerVersion(
-    //   this, 'Boto3LambdaLayer', {
-    //     code: lambda.Code.fromAsset('lambda/layers/boto3'),
-    //     compatibleRuntimes: [LAMBDA_RUNTIME],
-    //     description: 'Boto3 Library',
-    //     layerVersionName: 'boto3',
-    //     removalPolicy: cdk.RemovalPolicy.DESTROY 
-    //   }
-    // )
-
-    // const iblrLambdaLayer = new lambda.LayerVersion(
-    //   this, 'IblrLambdaLayer', {
-    //     code: lambda.Code.fromAsset('lambda/layers/ImbalancedLearningRegression'),
-    //     compatibleRuntimes: [LAMBDA_RUNTIME],
-    //     description: 'ImbalancedLearningRegression Package',
-    //     layerVersionName: 'ImbalancedLearningRegression',
-    //     removalPolicy: cdk.RemovalPolicy.DESTROY 
-    //   }
-    // )
-
-    // const lambdaLayer = new lambda.LayerVersion(
-    //   this, 'lambdaLayer', {
-    //     code: lambda.Code.fromAsset('lambda/layers/compression/layers.zip'),
-    //     compatibleRuntimes: [LAMBDA_RUNTIME],
-    //     description: 'Lambda Layers',
-    //     layerVersionName: 'layer',
-    //     removalPolicy: cdk.RemovalPolicy.DESTROY
-    //   }
-    // )
 
     const lambdaFunctionEnvironmentVariables = {
       'metadataTableName': metadataTable.tableName, 
@@ -178,22 +152,55 @@ export class CdkImbalancedLearningRegressionDemoStack extends cdk.Stack {
     subscribeSnsNotificationResource.addMethod('PUT', new apigateway.LambdaIntegration(subscribeSnsNotificationFunction))
     requestResource.addMethod('PUT', new apigateway.LambdaIntegration(requestFunction))
     retrievalResource.addMethod('PUT', new apigateway.LambdaIntegration(retrievalFunction))
+
+    // front-end
+    const uiFargateCluster = new ecs.Cluster(this, 'UIFargateCluster', {
+      enableFargateCapacityProviders: true
+    });
+    
+    const uiTaskDefinition = new ecs.FargateTaskDefinition(this, 'UITaskDefinition');
+    
+    const uiContainer = uiTaskDefinition.addContainer('UIContainer', {
+      image: ecs.ContainerImage.fromRegistry('wuwenglei/iblr-demo-ui:latest'),
+      environment: { API_BASE_URL: api.url }
+    });
+
+    uiContainer.addPortMappings({
+      containerPort: 3000,
+      protocol: ecs.Protocol.TCP,
+      name: 'ui-port-3000',
+      appProtocol: ecs.AppProtocol.http
+    });
+    
+    const uiLoadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'UILoadBalancedFargateService', {
+      cluster: uiFargateCluster,
+      taskDefinition: uiTaskDefinition,
+      desiredCount: 1,
+      assignPublicIp: true,
+      publicLoadBalancer: true,
+      ipAddressType: elbv2.IpAddressType.IPV4
+    });
+
+    const uiScalableTarget = uiLoadBalancedFargateService.service.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 5,
+    });
+    
+    uiScalableTarget.scaleOnCpuUtilization('CpuScaling', {
+      targetUtilizationPercent: 80,
+      scaleInCooldown: cdk.Duration.seconds(60),
+      scaleOutCooldown: cdk.Duration.seconds(60)
+    });
+    
+    uiScalableTarget.scaleOnMemoryUtilization('MemoryScaling', {
+      targetUtilizationPercent: 80,
+      scaleInCooldown: cdk.Duration.seconds(60),
+      scaleOutCooldown: cdk.Duration.seconds(60)
+    });
+
+    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: uiLoadBalancedFargateService.loadBalancer.loadBalancerDnsName });
   }
 }
 
-// pip install --target=./dependencies/boto3/ boto3
-// pip install --target=./dependencies/ImbalancedLearningRegression/ ImbalancedLearningRegression
-
-// mkdir lambda/layers/source
-// mkdir lambda/layers/compression
-// cd lambda/layers
-// pip install -r requirements.txt -t source/python/lib/python3.10/site-packages/
-// cd source
-// zip -r ../compression/layers.zip . -x ../requirements.txt
-
-// cd ../../../
-// npm run build
-// cdk synth
-// cdk deploy
-
+// npm run build && cdk synth && cdk deploy
 // cdk destroy

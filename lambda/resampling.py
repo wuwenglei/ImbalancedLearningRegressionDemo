@@ -16,11 +16,18 @@ metadata_table = boto3.resource('dynamodb').Table(os.environ['metadataTableName'
 s3_client = boto3.client('s3')
 
 methods = {
-    'ro': ImbalancedLearningRegression.ro
+    'ro': ImbalancedLearningRegression.ro,
+    'smote': ImbalancedLearningRegression.smote,
+    'gn': ImbalancedLearningRegression.gn,
+    'adasyn': ImbalancedLearningRegression.adasyn,
+    'ru': ImbalancedLearningRegression.random_under,
+    'cnn': ImbalancedLearningRegression.cnn,
+    'tomeklinks': ImbalancedLearningRegression.tomeklinks,
+    'enn': ImbalancedLearningRegression.enn
 }
 
-# { requestId, email, method, y, chartDataSize, chartLabelCount, chartDataPoints, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime, resamplingStartTime, resamplingEndTime }
-# sets: { chartDataPoints, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, resamplingStartTime, resamplingEndTime }
+# db fields: { requestId, email, method, y, chartDataSize, chartDataPoints, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime, resamplingStartTime, resamplingEndTime }
+# db updates: { chartDataPoints, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, resamplingStartTime, resamplingEndTime }
 def resample(bucket, key): 
     # file paths initialization - to delete the files afterwards
     local_raw_data_file_path = None
@@ -55,7 +62,8 @@ def resample(bucket, key):
         # data preparation
         method = metadata['method']
         y = metadata['y']
-        originalFileName = metadata['originalFileName']
+        task_status_sns_topic_subscription_option = metadata['taskStatusSnsTopicSubscriptionOption']
+        original_file_name = metadata['originalFileName']
         s3_raw_data_bucket_name = metadata['s3RawDataBucketName']
         s3_raw_data_object_key = metadata['s3RawDataObjectKey']
         s3_raw_data_file_name = metadata['s3RawDataFileName']
@@ -65,7 +73,6 @@ def resample(bucket, key):
         request_id = metadata['requestId']
         email = metadata['email']
         chart_data_size = int(metadata['chartDataSize'])
-        chart_label_count = int(metadata['chartLabelCount'])
         task_status_sns_topic_arn = metadata['taskStatusSnsTopicArn']
         record_creation_time = metadata['recordCreationTime']
         record_expiration_time = metadata['recordExpirationTime']
@@ -93,9 +100,9 @@ def resample(bucket, key):
                 email, 
                 method, 
                 y, 
-                originalFileName, 
+                original_file_name, 
                 record_creation_time
-            )
+            ) if task_status_sns_topic_subscription_option != 'reject' else None
         
             # resample
             raw_data = pandas.read_csv(local_raw_data_file_path)
@@ -107,14 +114,14 @@ def resample(bucket, key):
             # chart visualization data computation
             target_list_raw, density_list_raw = compute_kde_plot_data_points(raw_data, y, chart_data_size)
             target_list_resampled, density_list_resampled = compute_kde_plot_data_points(resampled_data, y, chart_data_size)
-            chart_data_points = format_kde_plot_data_points(target_list_raw, density_list_raw, target_list_resampled, density_list_resampled, chart_label_count)
+            chart_data_points = format_kde_plot_data_points(target_list_raw, density_list_raw, target_list_resampled, density_list_resampled)
             
             # resampled data s3 uploads
             s3_client.upload_file(Bucket = s3_resampled_data_bucket_name, Key = s3_resampled_data_object_key, Filename = local_resampled_data_file_path)
             
             # s3 download urls generation
-            get_raw_data_url = generate_presigned_url(s3_raw_data_bucket_name, s3_raw_data_object_key, 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time))
-            get_resampled_data_url = generate_presigned_url(s3_resampled_data_bucket_name, s3_resampled_data_object_key, 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time))
+            get_raw_data_url = generate_presigned_url(s3_raw_data_bucket_name, s3_raw_data_object_key, s3_raw_data_file_name, 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time))
+            get_resampled_data_url = generate_presigned_url(s3_resampled_data_bucket_name, s3_resampled_data_object_key, s3_resampled_data_file_name, 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time))
             
             # SNS email notification on resample complete
             on_resample_complete_sns_publish_message_id = send_on_resample_complete_email(
@@ -123,14 +130,14 @@ def resample(bucket, key):
                 email, 
                 method, 
                 y, 
-                originalFileName, 
+                original_file_name, 
                 record_creation_time, 
                 record_expiration_time, 
                 resampling_start_time, 
                 resampling_end_time,
                 get_raw_data_url,
                 get_resampled_data_url
-            )
+            ) if task_status_sns_topic_subscription_option != 'reject' else None
         # SNS email notification on resample fail
         except Exception as e:
             print(e)
@@ -140,10 +147,10 @@ def resample(bucket, key):
                 email, 
                 method, 
                 y, 
-                originalFileName, 
+                original_file_name, 
                 record_creation_time,
                 str(e)
-            )
+            ) if task_status_sns_topic_subscription_option != 'reject' else None
         
         # metadata update
         metadata_table.update_item(
@@ -187,28 +194,22 @@ def resample(bucket, key):
             os.remove(local_resampled_data_file_path)
     
 def compute_kde_plot_data_points(data, y, chart_data_size = 200):
-    ax = seaborn.kdeplot(data[y], gridsize=chart_data_size)
-    line = ax.lines[0]
+    ax = seaborn.kdeplot(data[y], gridsize = chart_data_size)
+    line = ax.lines[len(ax.lines) - 1]
     target_list, density_list = line.get_data()
     return target_list, density_list
 
-def format_kde_plot_data_points(target_list_raw, density_list_raw, target_list_resampled, density_list_resampled, chart_label_count = 5):
-    if chart_label_count < 2:
-        raise Exception("Input chart_label_count should not be less than 2!")
+def format_kde_plot_data_points(target_list_raw, density_list_raw, target_list_resampled, density_list_resampled):
     target_min = min(min(target_list_raw), min(target_list_resampled))
     target_max = max(max(target_list_raw), max(target_list_resampled))
     target_range = target_max - target_min
     chart_data_size = len(target_list_raw)
-    show_label_indices = list()
-    for n in range(chart_label_count - 1):
-        show_label_indices.append(n * (chart_data_size // (chart_label_count - 1)))
-    show_label_indices.append(chart_data_size - 1)
     result = list()
     for index, (density_raw, density_resampled) in enumerate(zip(density_list_raw, density_list_resampled)):
         result.append({
-            'name': str(target_min + index * (target_range // (chart_data_size - 1))) if index in show_label_indices else '',
-            'Raw': Decimal(str(density_raw)),
-            'Resampled': Decimal(str(density_resampled))
+            'Target Variable': Decimal(str(target_min + index * (target_range / (chart_data_size - 1)))),
+            'Raw Density': Decimal(str(density_raw)),
+            'Resampled Density': Decimal(str(density_resampled))
         })
     return result
     

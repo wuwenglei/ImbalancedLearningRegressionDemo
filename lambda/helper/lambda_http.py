@@ -32,5 +32,5 @@ def generate_lambda_proxy_exception_response(e):
                     "Access-Control-Allow-Origin" : "*",
                     "Access-Control-Allow-Credentials" : True
                 },
-            "body": json.dumps({"exception": str(e)})
+            "body": json.dumps({"error": str(e)})
         }

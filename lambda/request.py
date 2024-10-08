@@ -11,17 +11,17 @@ metadata_table = boto3.resource('dynamodb').Table(os.environ['metadataTableName'
 # Create S3 client
 s3_client = boto3.client('s3')
 
-# { requestId, email, method, y, chartDataSize, chartLabelCount, chartDataPoints, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime, resamplingStartTime, resamplingEndTime }
-# inputs: { email, method, y, chartDataSize, chartLabelCount, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, originalFileName }
-# sets: { requestId, taskStatusSnsTopicArn, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime }
-# missing: { chartDataPoints, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, resamplingStartTime, resamplingEndTime }
+# db fields: { requestId, email, method, y, chartDataSize, chartDataPoints, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime, resamplingStartTime, resamplingEndTime }
+# payload inputs: { email, method, y, chartDataSize, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, originalFileName }
+# db inserts: { requestId, email, method, y, chartDataSize, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime }
+# db missing: { chartDataPoints, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, resamplingStartTime, resamplingEndTime }
 def request(payload):
     # metadata preparation
     payload['email'] = payload['email'].strip().lower()
     payload['method'] = payload['method'].strip().lower()
-    payload['y'] = payload['y'].strip()
+    # payload['y'] = payload['y'].strip(): csv headers may begin or end with white spaces, so remove .strip()
+    payload['y'] = payload['y']
     payload['chartDataSize'] = int(payload['chartDataSize'])
-    payload['chartLabelCount'] = int(payload['chartLabelCount'])
     payload['taskStatusSnsTopicSubscriptionOption'] = payload['taskStatusSnsTopicSubscriptionOption'].strip().lower()
     payload['taskStatusSnsTopicSubscriptionArn'] = payload['taskStatusSnsTopicSubscriptionArn'].strip() if type(payload['taskStatusSnsTopicSubscriptionArn']) == str and payload['taskStatusSnsTopicSubscriptionOption'] == 'subscribed' else None
     if payload['taskStatusSnsTopicSubscriptionOption'] == 'accept':  # SNS email subscription if accept and not subscribed; taskStatusSnsTopicSubscriptionOptions: accept, reject, subscribed
@@ -42,26 +42,32 @@ def request(payload):
     record_expiration_time = get_timestamp(record_expiration_time_datetime, 'int')  
         
     # metadata insertion
-    metadata = payload
-    metadata.update({
-        'requestId': request_id, 
-        'taskStatusSnsTopicArn': os.environ['taskStatusSnsTopicArn'], 
-        'originalFileNameSuffix': original_file_name_suffix, 
-        's3RawDataBucketName': s3_raw_data_bucket_name, 
-        's3RawDataObjectKey': s3_raw_data_object_key, 
-        's3RawDataFileName': s3_raw_data_file_name,
-        's3ResampledDataBucketName': s3_resampled_data_bucket_name, 
-        's3ResampledDataObjectKey': s3_resampled_data_object_key, 
-        's3ResampledDataFileName': s3_resampled_data_file_name,
-        'recordCreationTime': record_creation_time, 
-        'recordExpirationTime': record_expiration_time
-    })
+    metadata = {
+      'requestId': request_id, 
+      'email': payload['email'],
+      'method': payload['method'],
+      'y': payload['y'],
+      'chartDataSize': payload['chartDataSize'],
+      'taskStatusSnsTopicArn': os.environ['taskStatusSnsTopicArn'], 
+      'taskStatusSnsTopicSubscriptionOption': payload['taskStatusSnsTopicSubscriptionOption'],
+      'taskStatusSnsTopicSubscriptionArn': payload['taskStatusSnsTopicSubscriptionArn'],
+      'originalFileName': payload['originalFileName'],
+      'originalFileNameSuffix': original_file_name_suffix, 
+      's3RawDataBucketName': s3_raw_data_bucket_name, 
+      's3RawDataObjectKey': s3_raw_data_object_key, 
+      's3RawDataFileName': s3_raw_data_file_name,
+      's3ResampledDataBucketName': s3_resampled_data_bucket_name, 
+      's3ResampledDataObjectKey': s3_resampled_data_object_key, 
+      's3ResampledDataFileName': s3_resampled_data_file_name,
+      'recordCreationTime': record_creation_time, 
+      'recordExpirationTime': record_expiration_time
+    }
     metadata_table.put_item(Item=metadata, ReturnValues='NONE')
     
     # s3 upload url generation and request respond
     response_body = metadata
     response_body.update({
-        'putPresignedUrl': generate_presigned_url(s3_raw_data_bucket_name, s3_raw_data_object_key, 'put', 900)
+        'putPresignedUrl': generate_presigned_url(s3_raw_data_bucket_name, s3_raw_data_object_key, s3_raw_data_file_name, 'put', 900)
     })
     return response_body
 

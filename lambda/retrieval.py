@@ -13,7 +13,7 @@ s3_client = boto3.client('s3')
 # Create SNS client
 sns_client = boto3.client('sns')
 
-# { requestId, email, method, y, chartDataSize, chartLabelCount, chartDataPoints, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime, resamplingStartTime, resamplingEndTime }
+# db fields: { requestId, email, method, y, chartDataSize, chartDataPoints, taskStatusSnsTopicArn, taskStatusSnsTopicSubscriptionOption, taskStatusSnsTopicSubscriptionArn, onResampleStartSnsPublishMessageId, onResampleCompleteSnsPublishMessageId, onResampleFailSnsPublishMessageId, originalFileName, originalFileNameSuffix, s3RawDataBucketName, s3RawDataObjectKey, s3RawDataFileName, s3ResampledDataBucketName, s3ResampledDataObjectKey, s3ResampledDataFileName, recordCreationTime, recordExpirationTime, resamplingStartTime, resamplingEndTime }
 # inputs: { requestId, email }
 def retrieve(payload):
     # metadata preparation
@@ -38,8 +38,8 @@ def retrieve(payload):
     # s3 download urls generation and request respond
     response_body = remove_dynamodb_item_types(metadata)
     response_body.update({
-        'getPresignedUrlRaw': None if response_body['resamplingStartTime'] == None else generate_presigned_url(metadata['s3RawDataBucketName'], metadata['s3RawDataObjectKey'], 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time)),
-        'getPresignedUrlResampled': None if response_body['resamplingEndTime'] == None else generate_presigned_url(metadata['s3ResampledDataBucketName'], metadata['s3ResampledDataObjectKey'], 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time))
+        'getPresignedUrlRaw': None if response_body['resamplingStartTime'] == None else generate_presigned_url(metadata['s3RawDataBucketName'], metadata['s3RawDataObjectKey'], metadata['s3RawDataFileName'], 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time)),
+        'getPresignedUrlResampled': None if response_body['resamplingEndTime'] == None else generate_presigned_url(metadata['s3ResampledDataBucketName'], metadata['s3ResampledDataObjectKey'], metadata['s3ResampledDataFileName'], 'get', get_presigned_url_expires_in_maximum_seconds(record_expiration_time))
     })
     return response_body
 

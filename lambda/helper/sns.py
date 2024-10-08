@@ -7,7 +7,14 @@ from helper.datetime_converter import timestamp_to_string
 sns_client = boto3.client('sns')
 
 resampling_method_names = {
-    'ro': 'Random Oversampling'
+    'ro': 'Random Oversampling',
+    'smote': 'Synthetic Minority Oversampling Technique (SMOTE)',
+    'gn': 'Introduction of Gaussian Noise',
+    'adasyn': 'Adaptive Synthetic Sampling (ADASYN)',
+    'ru': 'Random Undersampling',
+    'cnn': 'Condensed Nearest Neighbor',
+    'tomeklinks': 'Tomek Links',
+    'enn': 'Edited Nearest Neighbor'
 }
 
 def subscribe_sns_email(email):

@@ -32,6 +32,8 @@ def timestamp_to_string(timestamp):
 
 def get_presigned_url_expires_in_maximum_seconds(record_expiration_time):
     remaining_time = int(record_expiration_time) - get_current_timestamp('int')
+    if int(remaining_time) < 1:
+        raise Exception('Record has expired! Unable to get presigned URL!')
     if int(remaining_time) < 61:
         raise Exception('Record is expiring! Unable to get presigned URL!')
     return min(604800, remaining_time)
