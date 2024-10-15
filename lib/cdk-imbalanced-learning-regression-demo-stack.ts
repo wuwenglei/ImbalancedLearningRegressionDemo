@@ -1,9 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as ecs from 'aws-cdk-lib/aws-ecs';
-import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
@@ -153,52 +150,53 @@ export class CdkImbalancedLearningRegressionDemoStack extends cdk.Stack {
     requestResource.addMethod('PUT', new apigateway.LambdaIntegration(requestFunction))
     retrievalResource.addMethod('PUT', new apigateway.LambdaIntegration(retrievalFunction))
 
+    // UPDATE: moved to Amplify
     // front-end
-    const uiFargateCluster = new ecs.Cluster(this, 'UIFargateCluster', {
-      enableFargateCapacityProviders: true
-    });
+    // const uiFargateCluster = new ecs.Cluster(this, 'UIFargateCluster', {
+    //   enableFargateCapacityProviders: true
+    // });
     
-    const uiTaskDefinition = new ecs.FargateTaskDefinition(this, 'UITaskDefinition');
+    // const uiTaskDefinition = new ecs.FargateTaskDefinition(this, 'UITaskDefinition');
     
-    const uiContainer = uiTaskDefinition.addContainer('UIContainer', {
-      image: ecs.ContainerImage.fromRegistry('wuwenglei/iblr-demo-ui:latest'),
-      environment: { API_BASE_URL: api.url }
-    });
+    // const uiContainer = uiTaskDefinition.addContainer('UIContainer', {
+    //   image: ecs.ContainerImage.fromRegistry('wuwenglei/iblr-demo-ui:latest'),
+    //   environment: { API_BASE_URL: api.url }
+    // });
 
-    uiContainer.addPortMappings({
-      containerPort: 3000,
-      protocol: ecs.Protocol.TCP,
-      name: 'ui-port-3000',
-      appProtocol: ecs.AppProtocol.http
-    });
+    // uiContainer.addPortMappings({
+    //   containerPort: 3000,
+    //   protocol: ecs.Protocol.TCP,
+    //   name: 'ui-port-3000',
+    //   appProtocol: ecs.AppProtocol.http
+    // });
     
-    const uiLoadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'UILoadBalancedFargateService', {
-      cluster: uiFargateCluster,
-      taskDefinition: uiTaskDefinition,
-      desiredCount: 1,
-      assignPublicIp: true,
-      publicLoadBalancer: true,
-      ipAddressType: elbv2.IpAddressType.IPV4
-    });
+    // const uiLoadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'UILoadBalancedFargateService', {
+    //   cluster: uiFargateCluster,
+    //   taskDefinition: uiTaskDefinition,
+    //   desiredCount: 1,
+    //   assignPublicIp: true,
+    //   publicLoadBalancer: true,
+    //   ipAddressType: elbv2.IpAddressType.IPV4
+    // });
 
-    const uiScalableTarget = uiLoadBalancedFargateService.service.autoScaleTaskCount({
-      minCapacity: 1,
-      maxCapacity: 5,
-    });
+    // const uiScalableTarget = uiLoadBalancedFargateService.service.autoScaleTaskCount({
+    //   minCapacity: 1,
+    //   maxCapacity: 5,
+    // });
     
-    uiScalableTarget.scaleOnCpuUtilization('CpuScaling', {
-      targetUtilizationPercent: 80,
-      scaleInCooldown: cdk.Duration.seconds(60),
-      scaleOutCooldown: cdk.Duration.seconds(60)
-    });
+    // uiScalableTarget.scaleOnCpuUtilization('CpuScaling', {
+    //   targetUtilizationPercent: 80,
+    //   scaleInCooldown: cdk.Duration.seconds(60),
+    //   scaleOutCooldown: cdk.Duration.seconds(60)
+    // });
     
-    uiScalableTarget.scaleOnMemoryUtilization('MemoryScaling', {
-      targetUtilizationPercent: 80,
-      scaleInCooldown: cdk.Duration.seconds(60),
-      scaleOutCooldown: cdk.Duration.seconds(60)
-    });
+    // uiScalableTarget.scaleOnMemoryUtilization('MemoryScaling', {
+    //   targetUtilizationPercent: 80,
+    //   scaleInCooldown: cdk.Duration.seconds(60),
+    //   scaleOutCooldown: cdk.Duration.seconds(60)
+    // });
 
-    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: uiLoadBalancedFargateService.loadBalancer.loadBalancerDnsName });
+    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: uiLoadBalancedFargateService.loadBalancer.loadBalancerDnsName });
   }
 }
 
