@@ -138,7 +138,11 @@ export class CdkImbalancedLearningRegressionDemoStack extends cdk.Stack {
 
     const api = new apigateway.LambdaRestApi(this, 'ImbalancedLearningRegressionDemoApi', {
       handler: defaultFunction,
-      proxy: false
+      proxy: false,
+      deployOptions: {
+        throttlingBurstLimit: 20,
+        throttlingRateLimit: 10
+      }
     });
         
     const defaultResource = api.root.addResource('default');
